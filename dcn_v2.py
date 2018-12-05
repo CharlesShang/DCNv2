@@ -64,5 +64,6 @@ class DCN(DCNv2):
         out = self.conv_offset_mask(input)
         o1, o2, mask = torch.chunk(out, 3, dim=1)
         offset = torch.cat((o1, o2), dim=1)
+        mask = torch.sigmoid(mask)
         func = DCNv2Function(self.stride, self.padding, self.dilation, self.deformable_groups)
         return func(input, offset, mask, self.weight, self.bias)
