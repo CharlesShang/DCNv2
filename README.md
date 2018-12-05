@@ -16,12 +16,12 @@
     print(output.shape)
 ```
 
-### Known issues:
+### Known Issues:
 
 - [ ] Gradient check w.r.t offset
 - [ ] Backward is not reentrant
 
-This is adaption of the official [Deformable-ConvNets](https://github.com/msracver/Deformable-ConvNets/tree/master/DCNv2_op).
+This is an adaption of the official [Deformable-ConvNets](https://github.com/msracver/Deformable-ConvNets/tree/master/DCNv2_op).
 I have ran the gradient check for many times with DOUBLE type. Every tensor **except offset** passes. 
 However, when I set the offset to 0.5, it passes. I'm still wondering what cause this problem. Is it because some
 non-differential points? 

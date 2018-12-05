@@ -136,16 +136,14 @@ if __name__ == '__main__':
     try:
         check_gradient_double()
     except TypeError:
-        print('''You can swith to double precision in dcn_v2_func.py by (un)commenting these two lines: 
-                 from _ext import dcn_v2 as _backend
-                 from _ext import dcn_v2_double as _backend''')
-        print('Your tensor may not be **double** type')
-        print('Switching to **float** type')
+        print('''****** You can swith to double precision in dcn_v2_func.py by (un)commenting these two lines: 
+                 ****** from _ext import dcn_v2 as _backend
+                 ****** from _ext import dcn_v2_double as _backend''')
+        print('****** Your tensor may not be **double** type')
+        print('****** Switching to **float** type')
 
         check_gradient()
     finally:
-        print('Note: backward is not reentrant error may not be a serious problem, '
-              'since the max error is less than 1e-7\n'
-              'Still looking for what trigger this problem')
-
-    example()
+        print('****** Note: backward is not reentrant error may not be a serious problem, '
+              '****** since the max error is less than 1e-7\n'
+              '****** Still looking for what trigger this problem')
