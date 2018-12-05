@@ -62,7 +62,7 @@ class DCN(DCNv2):
 
     def forward(self, input):
         out = self.conv_offset_mask(input)
-        dy, dx, mask = torch.chunk(out, 3, dim=1)
-        offset = torch.cat((dy, dx), dim=1)
+        o1, o2, mask = torch.chunk(out, 3, dim=1)
+        offset = torch.cat((o1, o2), dim=1)
         func = DCNv2Function(self.stride, self.padding, self.dilation, self.deformable_groups)
         return func(input, offset, mask, self.weight, self.bias)
