@@ -112,10 +112,27 @@ def check_gradient():
 
     print(gradcheck(func, (input, offset, mask, weight, bias), eps=1e-3, atol=1e-3, rtol=1e-2))
 
+def example():
+    from dcn_v2 import DCN
+    input = torch.randn(2, 64, 128, 128).cuda()
+    # wrap all things (offset and mask) in DCN
+    dcn = DCN(64, 64, kernel_size=(3,3), stride=1, padding=1, deformable_groups=2).cuda()
+    output = dcn(input)
+    targert = output.new(*output.size())
+    targert.data.uniform_(-0.01, 0.01)
+    error = (targert - output).mean()
+    error.backward()
+    print(output.shape)
 
 if __name__ == '__main__':
+
+    example()
+
+    # zero offset check
     if inC == outC:
         check_zero_offset()
+
+    # gradient check
     try:
         check_gradient_double()
     except TypeError:
@@ -130,3 +147,5 @@ if __name__ == '__main__':
         print('Note: backward is not reentrant error may not be a serious problem, '
               'since the max error is less than 1e-7\n'
               'Still looking for what trigger this problem')
+
+    example()

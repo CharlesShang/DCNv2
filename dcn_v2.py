@@ -46,17 +46,17 @@ class DCN(DCNv2):
                  kernel_size, stride, padding,
                  dilation=1, deformable_groups=1):
         super(DCN, self).__init__(in_channels, out_channels,
-                 kernel_size, stride, padding, dilation, deformable_groups)
+                                  kernel_size, stride, padding, dilation, deformable_groups)
 
         self.conv_offset_mask = nn.Conv2d(self.in_channels,
-                                self.deformable_groups * 3 * self.kernel_size[0] * self.kernel_size[1],
-                                kernel_size=self.kernel_size,
-                                stride=(self.stride, self.stride),
-                                padding=(self.padding, self.padding),
-                                bias=True)
-        self.reset_parameters()
+                                          self.deformable_groups * 3 * self.kernel_size[0] * self.kernel_size[1],
+                                          kernel_size=self.kernel_size,
+                                          stride=(self.stride, self.stride),
+                                          padding=(self.padding, self.padding),
+                                          bias=True)
+        self.init_offset()
 
-    def reset_parameters(self):
+    def init_offset(self):
         self.conv_offset_mask.weight.data.zero_()
         self.conv_offset_mask.bias.data.zero_()
 
