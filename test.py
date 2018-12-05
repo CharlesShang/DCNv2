@@ -68,8 +68,8 @@ def check_gradient_double():
     input.requires_grad = True
 
     offset = torch.randn(N, deformable_groups * 2 * kW * kH, inH, inW, dtype=torch.float64).cuda()
-    offset.data.zero_()
-    offset.data -= 0.5
+    # offset.data.zero_()
+    # offset.data -= 0.00001
     offset.requires_grad = True
 
     mask = torch.rand(N, deformable_groups * 1 * kW * kH, inH, inW, dtype=torch.float64).cuda()
@@ -93,8 +93,8 @@ def check_gradient():
     input.requires_grad = True
 
     offset = torch.randn(N, deformable_groups * 2 * kW * kH, inH, inW).cuda()
-    offset.data.zero_()
-    offset.data -= 0.5
+    # offset.data.zero_()
+    # offset.data -= 0.5
     offset.requires_grad = True
 
     mask = torch.rand(N, deformable_groups * 1 * kW * kH, inH, inW).cuda()

@@ -158,7 +158,7 @@ void dcn_v2_cuda_backward(THCudaDoubleTensor *input, THCudaDoubleTensor *weight,
     {
         // Resize plane and fill with ones...
         THCudaDoubleTensor_resize2d(state, ones, height_out, width_out);
-        THCudaDoubleTensor_fill(state, ones, 1);
+        THCudaDoubleTensor_fill(state, ones, 1.0);
     }
 
     // THCudaDoubleTensor_resize4d(state, grad_input, batch, channels, height, width);
@@ -239,9 +239,9 @@ void dcn_v2_cuda_backward(THCudaDoubleTensor *input, THCudaDoubleTensor *weight,
         // long k__ = height_out * width_out;
         THCudaBlas_Dgemv(state,
                          't',
-                         k_, m_, 1.0f,
+                         k_, m_, 1.0,
                          THCudaDoubleTensor_data(state, grad_output_n), k_,
-                         THCudaDoubleTensor_data(state, ones), 1, 1.0f,
+                         THCudaDoubleTensor_data(state, ones), 1, 1.0,
                          THCudaDoubleTensor_data(state, grad_bias), 1);
     }
 

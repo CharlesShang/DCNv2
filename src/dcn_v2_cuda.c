@@ -142,7 +142,7 @@ void dcn_v2_cuda_backward(THCudaTensor *input, THCudaTensor *weight,
     {
         // Resize plane and fill with ones...
         THCudaTensor_resize2d(state, ones, height_out, width_out);
-        THCudaTensor_fill(state, ones, 1);
+        THCudaTensor_fill(state, ones, 1.0f);
     }
 
     THCudaTensor_resize4d(state, grad_input, batch, channels, height, width);
