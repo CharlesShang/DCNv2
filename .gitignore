@@ -1,0 +1,5 @@
+.vscode
+.idea
+*.so
+*pyc
+_ext
