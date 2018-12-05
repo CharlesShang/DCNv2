@@ -2,7 +2,7 @@
 
 ### Build
 ```bash
-    .\make            # build
+    ./make            # build
     python test.py    # run examples and gradient check 
 ```
 
