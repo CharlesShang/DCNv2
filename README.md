@@ -18,15 +18,19 @@
 
 ### Known Issues:
 
-- [ ] Gradient check w.r.t offset
-- [ ] Backward is not reentrant
+- [x] Gradient check w.r.t offset (solved)
+- [ ] Backward is not reentrant (minor)
 
 This is an adaption of the official [Deformable-ConvNets](https://github.com/msracver/Deformable-ConvNets/tree/master/DCNv2_op).
-I have ran the gradient check for many times with DOUBLE type. Every tensor **except offset** passes. 
-However, when I set the offset to 0.5, it passes. I'm still wondering what cause this problem. Is it because some
-non-differential points? 
 
-Another issue is that it raises `RuntimeError: Backward is not reentrant`. However, the error is very small `(<1e-7)`, 
+<s>I have ran the gradient check for many times with DOUBLE type. Every tensor **except offset** passes.
+However, when I set the offset to 0.5, it passes. I'm still wondering what cause this problem. Is it because some
+non-differential points? </s>
+
+Update: all gradient check passes with double precision. 
+
+Another issue is that it raises `RuntimeError: Backward is not reentrant`. However, the error is very small (`<1e-7` for 
+float `<1e-15` for double), 
 so it may not be a serious problem (?)
 
 Please post an issue or PR if you have any comments.
