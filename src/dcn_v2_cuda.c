@@ -40,7 +40,7 @@ void dcn_v2_cuda_forward(THCudaTensor *input, THCudaTensor *weight,
     const int height_out = (height + 2 * pad_h - (dilation_h * (kernel_h - 1) + 1)) / stride_h + 1;
     const int width_out = (width + 2 * pad_w - (dilation_w * (kernel_w - 1) + 1)) / stride_w + 1;
 
-    if (THCudaTensor__nDimension(state, ones) != 2 ||
+    if (THCudaTensor_nDimension(state, ones) != 2 ||
         THCudaTensor_size(state, ones, 0) * THCudaTensor_size(state, ones, 1) < height_out * width_out)
     {
         // Resize plane and fill with ones...
@@ -138,7 +138,7 @@ void dcn_v2_cuda_backward(THCudaTensor *input, THCudaTensor *weight,
     const int height_out = (height + 2 * pad_h - (dilation_h * (kernel_h - 1) + 1)) / stride_h + 1;
     const int width_out = (width + 2 * pad_w - (dilation_w * (kernel_w - 1) + 1)) / stride_w + 1;
 
-    if (THCudaTensor__nDimension(state, ones) != 2 ||
+    if (THCudaTensor_nDimension(state, ones) != 2 ||
         THCudaTensor_size(state, ones, 0) * THCudaTensor_size(state, ones, 1) < height_out * width_out)
     {
         // Resize plane and fill with ones...
