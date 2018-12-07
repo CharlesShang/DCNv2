@@ -15,6 +15,7 @@ if torch.cuda.is_available():
     headers += ['src/dcn_v2_cuda_double.h']
     defines += [('WITH_CUDA', None)]
     extra_objects += ['src/cuda/dcn_v2_im2col_cuda_double.cu.o']
+    extra_objects += ['src/cuda/dcn_v2_psroi_pooling_cuda_double.cu.o']
     with_cuda = True
 else:
     raise ValueError('CUDA is not available')

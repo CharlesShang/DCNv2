@@ -28,6 +28,31 @@ void dcn_v2_cuda_backward(THCudaTensor *input, THCudaTensor *weight,
                           int dilation_h, int dilation_w,
                           int deformable_group);
 
+void dcn_v2_psroi_pooling_cuda_forward(THCudaTensor * input, THCudaTensor * bbox,
+                                       THCudaTensor * trans, 
+                                       THCudaTensor * out, THCudaTensor * top_count,
+                                       const int no_trans,
+                                       const float spatial_scale,
+                                       const int output_dim,
+                                       const int group_size,
+                                       const int pooled_size,
+                                       const int part_size,
+                                       const int sample_per_part,
+                                       const float trans_std);
+
+void dcn_v2_psroi_pooling_cuda_backward(THCudaTensor * out_grad, 
+                                        THCudaTensor * input, THCudaTensor * bbox,
+                                        THCudaTensor * trans, THCudaTensor * top_count,
+                                        THCudaTensor * input_grad, THCudaTensor * trans_grad,
+                                        const int no_trans,
+                                        const float spatial_scale,
+                                        const int output_dim,
+                                        const int group_size,
+                                        const int pooled_size,
+                                        const int part_size,
+                                        const int sample_per_part,
+                                        const float trans_std);
+
 // #ifdef __cplusplus
 // }
 // #endif

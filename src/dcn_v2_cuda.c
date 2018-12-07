@@ -1,5 +1,6 @@
 #include <THC/THC.h>
 #include "cuda/dcn_v2_im2col_cuda.h"
+#include "cuda/dcn_v2_psroi_pooling_cuda.h"
 
 extern THCState *state;
 
@@ -237,4 +238,98 @@ void dcn_v2_cuda_backward(THCudaTensor *input, THCudaTensor *weight,
     THCudaTensor_free(state, grad_input_n);
     THCudaTensor_free(state, grad_offset_n);
     THCudaTensor_free(state, grad_mask_n);
+}
+
+void dcn_v2_psroi_pooling_cuda_forward(THCudaTensor * input, THCudaTensor * bbox,
+                                       THCudaTensor * trans, 
+                                       THCudaTensor * out, THCudaTensor * top_count,
+                                       const int no_trans,
+                                       const float spatial_scale,
+                                       const int output_dim,
+                                       const int group_size,
+                                       const int pooled_size,
+                                       const int part_size,
+                                       const int sample_per_part,
+                                       const float trans_std)
+{
+    THArgCheck(THCudaTensor_isContiguous(state, input), 1, "input tensor has to be contiguous");
+    THCAssertSameGPU(THCudaTensor_checkGPU(state, 5, input, bbox, trans, out, top_count));
+
+    const int batch = THCudaTensor_size(state, input, 0);
+    const int channels = THCudaTensor_size(state, input, 1);
+    const int height = THCudaTensor_size(state, input, 2);
+    const int width = THCudaTensor_size(state, input, 3);
+    const int channels_trans = no_trans? 2 : THCudaTensor_size(state, trans, 1);
+
+    const int num_bbox = THCudaTensor_size(state, bbox, 0);
+    if (num_bbox != THCudaTensor_size(state, out, 0))
+        THError("Output shape and bbox number wont match: (%d vs %d).", 
+                THCudaTensor_size(state, out, 0), num_bbox);
+
+    DeformablePSROIPoolForward(THCState_getCurrentStream(state),
+                               THCudaTensor_data(state, input),
+                               THCudaTensor_data(state, bbox),
+                               THCudaTensor_data(state, trans),
+                               THCudaTensor_data(state, out),
+                               THCudaTensor_data(state, top_count),
+                               batch, channels, height, width,
+                               num_bbox, 
+                               channels_trans, 
+                               no_trans, 
+                               spatial_scale,
+                               output_dim, 
+                               group_size, 
+                               pooled_size, 
+                               part_size,
+                               sample_per_part, 
+                               trans_std);
+}
+
+void dcn_v2_psroi_pooling_cuda_backward(THCudaTensor * out_grad, 
+                                        THCudaTensor * input, THCudaTensor * bbox,
+                                        THCudaTensor * trans, THCudaTensor * top_count,
+                                        THCudaTensor * input_grad, THCudaTensor * trans_grad,
+                                        const int no_trans,
+                                        const float spatial_scale,
+                                        const int output_dim,
+                                        const int group_size,
+                                        const int pooled_size,
+                                        const int part_size,
+                                        const int sample_per_part,
+                                        const float trans_std)
+{
+    THArgCheck(THCudaTensor_isContiguous(state, out_grad), 0, "out_grad tensor has to be contiguous");
+    THArgCheck(THCudaTensor_isContiguous(state, input), 1, "input tensor has to be contiguous");
+    THCAssertSameGPU(THCudaTensor_checkGPU(state, 7, input, bbox, trans, out_grad, top_count,
+                    input_grad, trans_grad));
+
+    const int batch = THCudaTensor_size(state, input, 0);
+    const int channels = THCudaTensor_size(state, input, 1);
+    const int height = THCudaTensor_size(state, input, 2);
+    const int width = THCudaTensor_size(state, input, 3);
+    const int channels_trans = no_trans? 2 : THCudaTensor_size(state, trans, 1);
+
+    const int num_bbox = THCudaTensor_size(state, bbox, 0);
+    if (num_bbox != THCudaTensor_size(state, out_grad, 0))
+        THError("Output shape and bbox number wont match: (%d vs %d).", 
+                THCudaTensor_size(state, out_grad, 0), num_bbox);
+
+    DeformablePSROIPoolBackwardAcc(THCState_getCurrentStream(state),
+                                   THCudaTensor_data(state, out_grad),
+                                   THCudaTensor_data(state, input),
+                                   THCudaTensor_data(state, bbox),
+                                   THCudaTensor_data(state, trans),
+                                   THCudaTensor_data(state, top_count),
+                                   THCudaTensor_data(state, input_grad),
+                                   THCudaTensor_data(state, trans_grad),
+                                   batch, channels, height, width, num_bbox,
+                                   channels_trans, 
+                                   no_trans, 
+                                   spatial_scale, 
+                                   output_dim,
+                                   group_size, 
+                                   pooled_size, 
+                                   part_size,
+                                   sample_per_part, 
+                                   trans_std);
 }

@@ -1,5 +1,6 @@
 #include <THC/THC.h>
 #include "cuda/dcn_v2_im2col_cuda_double.h"
+#include "cuda/dcn_v2_psroi_pooling_cuda_double.h"
 
 extern THCState *state;
 
@@ -158,7 +159,7 @@ void dcn_v2_cuda_backward(THCudaDoubleTensor *input, THCudaDoubleTensor *weight,
     {
         // Resize plane and fill with ones...
         THCudaDoubleTensor_resize2d(state, ones, height_out, width_out);
-        THCudaDoubleTensor_fill(state, ones, 1.0);
+        THCudaDoubleTensor_fill(state, ones, 1);
     }
 
     // THCudaDoubleTensor_resize4d(state, grad_input, batch, channels, height, width);
@@ -259,4 +260,99 @@ void dcn_v2_cuda_backward(THCudaDoubleTensor *input, THCudaDoubleTensor *weight,
     THCudaDoubleTensor_free(state, mask);
     THCudaDoubleTensor_free(state, weight);
     THCudaDoubleTensor_free(state, grad_output);
+}
+
+
+void dcn_v2_psroi_pooling_cuda_forward(THCudaDoubleTensor * input, THCudaDoubleTensor * bbox,
+                                       THCudaDoubleTensor * trans, 
+                                       THCudaDoubleTensor * out, THCudaDoubleTensor * top_count,
+                                       const int no_trans,
+                                       const double spatial_scale,
+                                       const int output_dim,
+                                       const int group_size,
+                                       const int pooled_size,
+                                       const int part_size,
+                                       const int sample_per_part,
+                                       const double trans_std)
+{
+    THArgCheck(THCudaDoubleTensor_isContiguous(state, input), 1, "input tensor has to be contiguous");
+    THCAssertSameGPU(THCudaDoubleTensor_checkGPU(state, 5, input, bbox, trans, out, top_count));
+
+    const int batch = THCudaDoubleTensor_size(state, input, 0);
+    const int channels = THCudaDoubleTensor_size(state, input, 1);
+    const int height = THCudaDoubleTensor_size(state, input, 2);
+    const int width = THCudaDoubleTensor_size(state, input, 3);
+    const int channels_trans = no_trans? 2 : THCudaDoubleTensor_size(state, trans, 1);
+
+    const int num_bbox = THCudaDoubleTensor_size(state, bbox, 0);
+    if (num_bbox != THCudaDoubleTensor_size(state, out, 0))
+        THError("Output shape and bbox number wont match: (%d vs %d).", 
+                THCudaDoubleTensor_size(state, out, 0), num_bbox);
+
+    DeformablePSROIPoolForward(THCState_getCurrentStream(state),
+                               THCudaDoubleTensor_data(state, input),
+                               THCudaDoubleTensor_data(state, bbox),
+                               THCudaDoubleTensor_data(state, trans),
+                               THCudaDoubleTensor_data(state, out),
+                               THCudaDoubleTensor_data(state, top_count),
+                               batch, channels, height, width,
+                               num_bbox, 
+                               channels_trans, 
+                               no_trans, 
+                               spatial_scale,
+                               output_dim, 
+                               group_size, 
+                               pooled_size, 
+                               part_size,
+                               sample_per_part, 
+                               trans_std);
+}
+
+void dcn_v2_psroi_pooling_cuda_backward(THCudaDoubleTensor * out_grad, 
+                                        THCudaDoubleTensor * input, THCudaDoubleTensor * bbox,
+                                        THCudaDoubleTensor * trans, THCudaDoubleTensor * top_count,
+                                        THCudaDoubleTensor * input_grad, THCudaDoubleTensor * trans_grad,
+                                        const int no_trans,
+                                        const double spatial_scale,
+                                        const int output_dim,
+                                        const int group_size,
+                                        const int pooled_size,
+                                        const int part_size,
+                                        const int sample_per_part,
+                                        const double trans_std)
+{
+    THArgCheck(THCudaDoubleTensor_isContiguous(state, out_grad), 0, "out_grad tensor has to be contiguous");
+    THArgCheck(THCudaDoubleTensor_isContiguous(state, input), 1, "input tensor has to be contiguous");
+    THCAssertSameGPU(THCudaDoubleTensor_checkGPU(state, 7, input, bbox, trans, out_grad, top_count,
+                    input_grad, trans_grad));
+
+    const int batch = THCudaDoubleTensor_size(state, input, 0);
+    const int channels = THCudaDoubleTensor_size(state, input, 1);
+    const int height = THCudaDoubleTensor_size(state, input, 2);
+    const int width = THCudaDoubleTensor_size(state, input, 3);
+    const int channels_trans = no_trans? 2 : THCudaDoubleTensor_size(state, trans, 1);
+
+    const int num_bbox = THCudaDoubleTensor_size(state, bbox, 0);
+    if (num_bbox != THCudaDoubleTensor_size(state, out_grad, 0))
+        THError("Output shape and bbox number wont match: (%d vs %d).", 
+                THCudaDoubleTensor_size(state, out_grad, 0), num_bbox);
+
+    DeformablePSROIPoolBackwardAcc(THCState_getCurrentStream(state),
+                                   THCudaDoubleTensor_data(state, out_grad),
+                                   THCudaDoubleTensor_data(state, input),
+                                   THCudaDoubleTensor_data(state, bbox),
+                                   THCudaDoubleTensor_data(state, trans),
+                                   THCudaDoubleTensor_data(state, top_count),
+                                   THCudaDoubleTensor_data(state, input_grad),
+                                   THCudaDoubleTensor_data(state, trans_grad),
+                                   batch, channels, height, width, num_bbox,
+                                   channels_trans, 
+                                   no_trans, 
+                                   spatial_scale, 
+                                   output_dim,
+                                   group_size, 
+                                   pooled_size, 
+                                   part_size,
+                                   sample_per_part, 
+                                   trans_std);
 }
