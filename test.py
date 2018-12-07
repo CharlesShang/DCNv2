@@ -112,7 +112,38 @@ def check_gradient():
 
     print(gradcheck(func, (input, offset, mask, weight, bias), eps=1e-3, atol=1e-3, rtol=1e-2))
 
-def example():
+def check_pooling_zero_offset():
+    from dcn_v2 import DCNv2Pooling
+    input = torch.randn(2, 16, 64, 64).cuda().zero_()
+    input[0, :, 16:26, 16:26] = 1.
+    input[1, :, 10:20, 20:30] = 2.
+    rois = torch.tensor([
+        [0, 65, 65, 103, 103],
+        [1, 81, 41, 119, 79],
+    ]).cuda().float()
+    pooling = DCNv2Pooling(spatial_scale=1.0 / 4,
+                           pooled_size=7,
+                           output_dim=16,
+                           no_trans=True,
+                           group_size=1,
+                           trans_std=0.1).cuda()
+
+    out = pooling(input, rois, input.new())
+    s = ', '.join(['%f' % out[i, :, :, :].mean().item() for i in range(rois.shape[0])])
+    print(s)
+
+    dpooling = DCNv2Pooling(spatial_scale=1.0 / 4,
+                            pooled_size=7,
+                            output_dim=16,
+                            no_trans=False,
+                            group_size=1,
+                            trans_std=0.1).cuda()
+    offset = torch.randn(20, 2, 7, 7).cuda().zero_()
+    dout = dpooling(input, rois, offset)
+    s = ', '.join(['%f' % dout[i, :, :, :].mean().item() for i in range(rois.shape[0])])
+    print(s)
+
+def example_dconv():
     from dcn_v2 import DCN
     input = torch.randn(2, 64, 128, 128).cuda()
     # wrap all things (offset and mask) in DCN
@@ -124,26 +155,82 @@ def example():
     error.backward()
     print(output.shape)
 
+def example_dpooling():
+    from dcn_v2 import DCNv2Pooling
+    input = torch.randn(2, 32, 64, 64).cuda()
+    batch_inds = torch.randint(2, (20, 1)).cuda().float()
+    x = torch.randint(256, (20, 1)).cuda().float()
+    y = torch.randint(256, (20, 1)).cuda().float()
+    w = torch.randint(64, (20, 1)).cuda().float()
+    h = torch.randint(64, (20, 1)).cuda().float()
+    rois = torch.cat((batch_inds, x, y, x + w, y + h), dim=1)
+    offset = torch.randn(20, 2, 7, 7).cuda()
+
+    # normal roi_align
+    pooling = DCNv2Pooling(spatial_scale=1.0 / 4,
+                           pooled_size=7,
+                           output_dim=32,
+                           no_trans=True,
+                           group_size=1,
+                           trans_std=0.1).cuda()
+
+    # deformable pooling
+    dpooling = DCNv2Pooling(spatial_scale=1.0 / 4,
+                            pooled_size=7,
+                            output_dim=32,
+                            no_trans=False,
+                            group_size=1,
+                            trans_std=0.1).cuda()
+
+    out = pooling(input, rois, offset)
+    dout = dpooling(input, rois, offset)
+    print(out.shape)
+    print(dout.shape)
+
+def example_mdpooling():
+    from dcn_v2 import DCNPooling
+    input = torch.randn(2, 32, 64, 64).cuda()
+    batch_inds = torch.randint(2, (20, 1)).cuda().float()
+    x = torch.randint(256, (20, 1)).cuda().float()
+    y = torch.randint(256, (20, 1)).cuda().float()
+    w = torch.randint(64, (20, 1)).cuda().float()
+    h = torch.randint(64, (20, 1)).cuda().float()
+    rois = torch.cat((batch_inds, x, y, x + w, y + h), dim=1)
+
+    # mdformable pooling (V2)
+    dpooling = DCNPooling(spatial_scale=1.0 / 4,
+                         pooled_size=7,
+                         output_dim=32,
+                         no_trans=False,
+                         group_size=1,
+                         trans_std=0.1).cuda()
+
+    dout = dpooling(input, rois)
+    print(dout.shape)
+
 if __name__ == '__main__':
 
-    example()
+    example_dconv()
+    example_dpooling()
+    example_mdpooling()
 
+    check_pooling_zero_offset()
     # zero offset check
     if inC == outC:
         check_zero_offset()
-
-    # gradient check
-    try:
-        check_gradient_double()
-    except TypeError:
-        print('''****** You can swith to double precision in dcn_v2_func.py by (un)commenting these two lines: 
-                 ****** from _ext import dcn_v2 as _backend
-                 ****** from _ext import dcn_v2_double as _backend''')
-        print('****** Your tensor may not be **double** type')
-        print('****** Switching to **float** type')
-
-        check_gradient()
-    finally:
-        print('****** Note: backward is not reentrant error may not be a serious problem, '
-              '****** since the max error is less than 1e-7\n'
-              '****** Still looking for what trigger this problem')
+    #
+    # # gradient check
+    # try:
+    #     check_gradient_double()
+    # except TypeError:
+    #     print('''****** You can swith to double precision in dcn_v2_func.py by (un)commenting these two lines:
+    #              ****** from _ext import dcn_v2 as _backend
+    #              ****** from _ext import dcn_v2_double as _backend''')
+    #     print('****** Your tensor may not be **double** type')
+    #     print('****** Switching to **float** type')
+    #
+    #     check_gradient()
+    # finally:
+    #     print('****** Note: backward is not reentrant error may not be a serious problem, '
+    #           '****** since the max error is less than 1e-7\n'
+    #           '****** Still looking for what trigger this problem')
