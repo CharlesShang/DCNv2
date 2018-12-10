@@ -144,12 +144,16 @@ class DCNPooling(DCNv2Pooling):
                 nn.ReLU(inplace=True),
                 nn.Linear(self.deform_fc_dim, self.pooled_size * self.pooled_size * 2)
             )
+            self.offset_fc[4].weight.data.zero_()
+            self.offset_fc[4].bias.data.zero_()
             self.mask_fc = nn.Sequential(
                 nn.Linear(self.pooled_size * self.pooled_size * self.output_dim, self.deform_fc_dim),
                 nn.ReLU(inplace=True),
                 nn.Linear(self.deform_fc_dim, self.pooled_size * self.pooled_size * 1),
                 nn.Sigmoid()
             )
+            self.mask_fc[2].weight.data.zero_()
+            self.mask_fc[2].bias.data.zero_()
 
     def forward(self, data, rois):
         if self.no_trans:
