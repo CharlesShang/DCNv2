@@ -145,15 +145,26 @@ def check_pooling_zero_offset():
     s = ', '.join(['%f' % dout[i, :, :, :].mean().item() for i in range(rois.shape[0])])
     print(s)
 
-# def check_gradient_dpooling():
-#     input = torch.randn(2, 32, 64, 64).cuda()
-#     batch_inds = torch.randint(2, (20, 1)).cuda().float()
-#     x = torch.randint(256, (20, 1)).cuda().float()
-#     y = torch.randint(256, (20, 1)).cuda().float()
-#     w = torch.randint(64, (20, 1)).cuda().float()
-#     h = torch.randint(64, (20, 1)).cuda().float()
-#     rois = torch.cat((batch_inds, x, y, x + w, y + h), dim=1)
-#     offset = torch.randn(20, 2, 7, 7).cuda()
+def check_gradient_dpooling():
+    input = torch.randn(2, 3, 5, 5).cuda() * 0.01
+    N = 4
+    batch_inds = torch.randint(2, (N, 1)).cuda().float()
+    x = torch.rand((N, 1)).cuda().float() * 15
+    y = torch.rand((N, 1)).cuda().float() * 15
+    w = torch.rand((N, 1)).cuda().float() * 10
+    h = torch.rand((N, 1)).cuda().float() * 10
+    rois = torch.cat((batch_inds, x, y, x + w, y + h), dim=1)
+    offset = torch.randn(N, 2, 3, 3).cuda()
+    dpooling = DCNv2Pooling(spatial_scale=1.0 / 4,
+                            pooled_size=3,
+                            output_dim=3,
+                            no_trans=False,
+                            group_size=1,
+                            trans_std=0.0).cuda()
+    input.requires_grad = True
+    offset.requires_grad = True
+    print('check_gradient_dpooling', gradcheck(dpooling, (input, rois, offset), eps=1e-4))
+
 
 def example_dconv():
     from dcn_v2 import DCN
@@ -246,7 +257,9 @@ if __name__ == '__main__':
     # zero offset check
     if inC == outC:
         check_zero_offset()
-    #
+
+    check_gradient_dpooling()
+
     # # gradient check
     # try:
     #     check_gradient_double()
