@@ -1,4 +1,4 @@
-## Deformable Convolutional Networks V2 with Pytorch
+## Deformable Convolutional Networks V2 with Pytorch 1.0
 
 ### Build
 ```bash
