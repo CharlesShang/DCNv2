@@ -63,6 +63,8 @@ def check_zero_offset():
         print('Zero offset passed')
     else:
         print('Zero offset failed')
+        print(input)
+        print(output)
 
 def check_gradient_dconv():
 
@@ -91,7 +93,7 @@ def check_gradient_dconv():
 
     print('check_gradient_dconv: ',
           gradcheck(dcn_v2_conv, (input, offset, mask, weight, bias,
-                     stride, padding, dilation, deformable_groups),
+                    stride, padding, dilation, deformable_groups),
                     eps=1e-3, atol=1e-4, rtol=1e-2))
 
 
@@ -259,8 +261,8 @@ if __name__ == '__main__':
     if inC == outC:
         check_zero_offset()
 
-    # check_gradient_dpooling()
-    # check_gradient_dconv()
+    check_gradient_dpooling()
+    check_gradient_dconv()
     # """
     # ****** Note: backward is not reentrant error may not be a serious problem,
     # ****** since the max error is less than 1e-7,

@@ -133,11 +133,11 @@ __global__ void modulated_deformable_im2col_gpu_kernel(const int n,
                                                        const int height_col, const int width_col,
                                                        float *data_col)
 {
+  // launch channels * batch_size * height_col * width_col cores
   CUDA_KERNEL_LOOP(index, n)
   {
     // NOTE(CharlesShang): different from Dai Jifeng's MXNet implementation, col_buffer is of shape (c*kw*kh, N, oh, ow)
     // here columns is of shape (N, c*kw*kh, oh * ow), need to adapt axis
-    // launch channels * batch_size * height_col * width_col cores
     // index index of output matrix
     const int w_col = index % width_col;
     const int h_col = (index / width_col) % height_col;
@@ -270,6 +270,7 @@ __global__ void modulated_deformable_col2im_coord_gpu_kernel(const int n,
                                                              const int height_col, const int width_col,
                                                              float *grad_offset, float *grad_mask)
 {
+  // lanuch batch_size * (2 * kernel_h * kernel_w * deformable_group) * height_col * width_col cores
   CUDA_KERNEL_LOOP(index, n)
   {
     float val = 0, mval = 0;
