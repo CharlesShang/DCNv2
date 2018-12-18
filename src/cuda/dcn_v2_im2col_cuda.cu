@@ -138,6 +138,7 @@ __global__ void modulated_deformable_im2col_gpu_kernel(const int n,
   {
     // NOTE(CharlesShang): different from Dai Jifeng's MXNet implementation, col_buffer is of shape (c*kw*kh, N, oh, ow)
     // here columns is of shape (N, c*kw*kh, oh * ow), need to adapt axis
+
     // index index of output matrix
     const int w_col = index % width_col;
     const int h_col = (index / width_col) % height_col;
@@ -205,23 +206,18 @@ __global__ void modulated_deformable_col2im_gpu_kernel(const int n,
                                                        const int height_col, const int width_col,
                                                        float *grad_im)
 {
-  // launch (batch_size * channels * kernel_h * kernel_w * height_col * width_col) cores
   CUDA_KERNEL_LOOP(index, n)
   {
-    // const int j = (index / width_col / height_col / batch_size) % kernel_w;
-    const int j = (index / width_col / height_col) % kernel_w;
-    // const int i = (index / width_col / height_col / batch_size / kernel_w) % kernel_h;
-    const int i = (index / width_col / height_col / kernel_w) % kernel_h;
-    // const int c = index / width_col / height_col / batch_size / kernel_w / kernel_h;
-    const int c = (index / width_col / height_col / kernel_w / kernel_h) % channels;
+    const int j = (index / width_col / height_col / batch_size) % kernel_w;
+    const int i = (index / width_col / height_col / batch_size / kernel_w) % kernel_h;
+    const int c = index / width_col / height_col / batch_size / kernel_w / kernel_h;
     // compute the start and end of the output
 
     const int deformable_group_index = c / channel_per_deformable_group;
 
     int w_out = index % width_col;
     int h_out = (index / width_col) % height_col;
-    // int b = (index / width_col / height_col) % batch_size;
-    int b = (index / width_col / height_col / channels / kernel_h / kernel_w) % batch_size;
+    int b = (index / width_col / height_col) % batch_size;
     int w_in = w_out * stride_w - pad_w;
     int h_in = h_out * stride_h - pad_h;
 
@@ -270,7 +266,6 @@ __global__ void modulated_deformable_col2im_coord_gpu_kernel(const int n,
                                                              const int height_col, const int width_col,
                                                              float *grad_offset, float *grad_mask)
 {
-  // lanuch batch_size * (2 * kernel_h * kernel_w * deformable_group) * height_col * width_col cores
   CUDA_KERNEL_LOOP(index, n)
   {
     float val = 0, mval = 0;
@@ -283,8 +278,7 @@ __global__ void modulated_deformable_col2im_coord_gpu_kernel(const int n,
     const int deformable_group_index = c / (2 * kernel_h * kernel_w);
     const int col_step = kernel_h * kernel_w;
     int cnt = 0;
-    // const float *data_col_ptr = data_col + deformable_group_index * channel_per_deformable_group * batch_size * width_col * height_col;
-    const float *data_col_ptr = data_col + deformable_group_index * channel_per_deformable_group * width_col * height_col;
+    const float *data_col_ptr = data_col + deformable_group_index * channel_per_deformable_group * batch_size * width_col * height_col;
     const float *data_im_ptr = data_im + (b * deformable_group + deformable_group_index) * channel_per_deformable_group / kernel_h / kernel_w * height * width;
     const float *data_offset_ptr = data_offset + (b * deformable_group + deformable_group_index) * 2 * kernel_h * kernel_w * height_col * width_col;
     const float *data_mask_ptr = data_mask + (b * deformable_group + deformable_group_index) * kernel_h * kernel_w * height_col * width_col;
@@ -293,14 +287,11 @@ __global__ void modulated_deformable_col2im_coord_gpu_kernel(const int n,
 
     for (int col_c = (offset_c / 2); col_c < channel_per_deformable_group; col_c += col_step)
     {
-      // const int col_pos = (((col_c * batch_size + b) * height_col) + h) * width_col + w;
-      const int col_pos = (((col_c + b * channels * kernel_h * kernel_w) * height_col) + h) * width_col + w;
+      const int col_pos = (((col_c * batch_size + b) * height_col) + h) * width_col + w;
       const int bp_dir = offset_c % 2;
 
-      // int j = (col_pos / width_col / height_col / batch_size) % kernel_w;
-      int j = col_c % kernel_w;
-      // int i = (col_pos / width_col / height_col / batch_size / kernel_w) % kernel_h;
-      int i = (col_c / kernel_w) % kernel_h;
+      int j = (col_pos / width_col / height_col / batch_size) % kernel_w;
+      int i = (col_pos / width_col / height_col / batch_size / kernel_w) % kernel_h;
       int w_out = col_pos % width_col;
       int h_out = (col_pos / width_col) % height_col;
       int w_in = w_out * stride_w - pad_w;

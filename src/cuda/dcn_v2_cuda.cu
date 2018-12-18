@@ -244,8 +244,8 @@ std::vector<at::Tensor> dcn_v2_cuda_backward(const at::Tensor &input,
     const int height_out = (height + 2 * pad_h - (dilation_h * (kernel_h - 1) + 1)) / stride_h + 1;
     const int width_out = (width + 2 * pad_w - (dilation_w * (kernel_w - 1) + 1)) / stride_w + 1;
 
-    auto ones = at::ones({batch, height_out, width_out}, input.options());
-    auto columns = at::empty({batch, channels * kernel_h * kernel_w, 1 * height_out * width_out}, input.options());
+    auto ones = at::ones({height_out, width_out}, input.options());
+    auto columns = at::empty({channels * kernel_h * kernel_w, 1 * height_out * width_out}, input.options());
     auto output = at::empty({batch, channels_out, height_out, width_out}, input.options());
 
     auto grad_input = at::zeros_like(input);
@@ -256,126 +256,80 @@ std::vector<at::Tensor> dcn_v2_cuda_backward(const at::Tensor &input,
 
     using scalar_t = float;
 
-    // prepare for batch-wise computing, which is significantly faster than instance-wise computing
-    // when batch size is large.
-    // launch batch threads
-    int matrices_size = batch * sizeof(float *);
+    for (int b = 0; b < batch; b++)
+    {
+        auto input_n = input.select(0, b);
+        auto offset_n = offset.select(0, b);
+        auto mask_n = mask.select(0, b);
+        auto grad_output_n = grad_output.select(0, b);
+        auto grad_input_n = grad_input.select(0, b);
+        auto grad_offset_n = grad_offset.select(0, b);
+        auto grad_mask_n = grad_mask.select(0, b);
 
-    auto grad_output_b = static_cast<float **>(THCudaMalloc(state, matrices_size));
-    auto columns_b = static_cast<float **>(THCudaMalloc(state, matrices_size));
-    auto ones_b = static_cast<float **>(THCudaMalloc(state, matrices_size));
-    auto weight_b = static_cast<float **>(THCudaMalloc(state, matrices_size));
-    auto grad_weight_b = static_cast<float **>(THCudaMalloc(state, matrices_size));
-    auto grad_bias_b = static_cast<float **>(THCudaMalloc(state, matrices_size));
+        long m = channels * kernel_h * kernel_w;
+        long n = height_out * width_out;
+        long k = channels_out;
 
-    const int block = 128;
-    const int grid = (batch + block - 1) / block;
+        THCudaBlas_Sgemm(state, 'n', 't', n, m, k, 1.0f,
+                         grad_output_n.data<scalar_t>(), n,
+                         weight.data<scalar_t>(), m, 0.0f,
+                         columns.data<scalar_t>(), n);
 
-    createBatchGemmBufferBackward<<<grid, block, 0, THCState_getCurrentStream(state)>>>(
-        grad_output_b,
-        columns_b,
-        ones_b,
-        weight_b,
-        grad_weight_b,
-        grad_bias_b,
-        grad_output.data<scalar_t>(),
-        columns.data<scalar_t>(),
-        ones.data<scalar_t>(),
-        weight.data<scalar_t>(),
-        grad_weight.data<scalar_t>(),
-        grad_bias.data<scalar_t>(),
-        channels_out * height_out * width_out,
-        channels * kernel_h * kernel_w * height_out * width_out,
-        height_out * width_out,
-        batch);
+        // gradient w.r.t. input coordinate data
+        modulated_deformable_col2im_coord_cuda(THCState_getCurrentStream(state),
+                                               columns.data<scalar_t>(),
+                                               input_n.data<scalar_t>(),
+                                               offset_n.data<scalar_t>(),
+                                               mask_n.data<scalar_t>(),
+                                               1, channels, height, width,
+                                               height_out, width_out, kernel_h, kernel_w,
+                                               pad_h, pad_w, stride_h, stride_w,
+                                               dilation_h, dilation_w, deformable_group,
+                                               grad_offset_n.data<scalar_t>(),
+                                               grad_mask_n.data<scalar_t>());
+        // gradient w.r.t. input data
+        modulated_deformable_col2im_cuda(THCState_getCurrentStream(state),
+                                         columns.data<scalar_t>(),
+                                         offset_n.data<scalar_t>(),
+                                         mask_n.data<scalar_t>(),
+                                         1, channels, height, width,
+                                         height_out, width_out, kernel_h, kernel_w,
+                                         pad_h, pad_w, stride_h, stride_w,
+                                         dilation_h, dilation_w, deformable_group,
+                                         grad_input_n.data<scalar_t>());
 
-    long m = channels * kernel_h * kernel_w;
-    long n = height_out * width_out;
-    long k = channels_out;
-    THCudaBlas_SgemmBatched(state,
-                            'n',
-                            't',
-                            n,
-                            m,
-                            k,
-                            1.0f,
-                            (const float **)grad_output_b, n,
-                            (const float **)weight_b, m,
-                            0.0f,
-                            columns_b, n,
-                            batch);
+        // gradient w.r.t. weight, dWeight should accumulate across the batch and group
+        modulated_deformable_im2col_cuda(THCState_getCurrentStream(state),
+                                         input_n.data<scalar_t>(),
+                                         offset_n.data<scalar_t>(),
+                                         mask_n.data<scalar_t>(),
+                                         1, channels, height, width,
+                                         height_out, width_out, kernel_h, kernel_w,
+                                         pad_h, pad_w, stride_h, stride_w,
+                                         dilation_h, dilation_w, deformable_group,
+                                         columns.data<scalar_t>());
 
-    // gradient w.r.t. input coordinate data
-    modulated_deformable_col2im_coord_cuda(THCState_getCurrentStream(state),
-                                           columns.data<scalar_t>(),
-                                           input.data<scalar_t>(),
-                                           offset.data<scalar_t>(),
-                                           mask.data<scalar_t>(),
-                                           batch, channels, height, width,
-                                           height_out, width_out, kernel_h, kernel_w,
-                                           pad_h, pad_w, stride_h, stride_w,
-                                           dilation_h, dilation_w, deformable_group,
-                                           grad_offset.data<scalar_t>(),
-                                           grad_mask.data<scalar_t>());
-    // gradient w.r.t. input data
-    modulated_deformable_col2im_cuda(THCState_getCurrentStream(state),
-                                     columns.data<scalar_t>(),
-                                     offset.data<scalar_t>(),
-                                     mask.data<scalar_t>(),
-                                     batch, channels, height, width,
-                                     height_out, width_out, kernel_h, kernel_w,
-                                     pad_h, pad_w, stride_h, stride_w,
-                                     dilation_h, dilation_w, deformable_group,
-                                     grad_input.data<scalar_t>());
+        long m_ = channels_out;
+        long n_ = channels * kernel_h * kernel_w;
+        long k_ = height_out * width_out;
 
-    // gradient w.r.t. weight, dWeight should accumulate across the batch and group
-    modulated_deformable_im2col_cuda(THCState_getCurrentStream(state),
-                                     input.data<scalar_t>(),
-                                     offset.data<scalar_t>(),
-                                     mask.data<scalar_t>(),
-                                     batch, channels, height, width,
-                                     height_out, width_out, kernel_h, kernel_w,
-                                     pad_h, pad_w, stride_h, stride_w,
-                                     dilation_h, dilation_w, deformable_group,
-                                     columns.data<scalar_t>());
-    long m_ = channels_out;
-    long n_ = channels * kernel_h * kernel_w;
-    long k_ = height_out * width_out;
-    // gradient w.r.t. weight
-    THCudaBlas_SgemmBatched(state,
-                            't',
-                            'n',
-                            n_,
-                            m_,
-                            k_,
-                            1.0f,
-                            (const float **)columns_b, k_,
-                            (const float **)grad_output_b, k_,
-                            1.0f,
-                            grad_weight_b, n_,
-                            batch);
+        THCudaBlas_Sgemm(state, 't', 'n', n_, m_, k_, 1.0f,
+                         columns.data<scalar_t>(), k_,
+                         grad_output_n.data<scalar_t>(), k_, 1.0f,
+                         grad_weight.data<scalar_t>(), n_);
 
-    // gradient w.r.t. bias
-    THCudaBlas_SgemmBatched(state,
-                            't',
-                            'n',
-                            m_,
-                            1,
-                            k_,
-                            1.0f,
-                            (const float **)grad_output_b, k_,
-                            (const float **)ones_b, k_,
-                            1.0f,
-                            grad_bias_b, m_,
-                            batch);
-
-    THCudaFree(state, grad_output_b);
-    THCudaFree(state, columns_b);
-    THCudaFree(state, ones_b);
-    THCudaFree(state, weight_b);
-    THCudaFree(state, grad_weight_b);
-    THCudaFree(state, grad_bias_b);
+        // gradient w.r.t. bias
+        // long m_ = channels_out;
+        // long k__ = height_out * width_out;
+        THCudaBlas_Sgemv(state,
+                         't',
+                         k_, m_, 1.0f,
+                         grad_output_n.data<scalar_t>(), k_,
+                         ones.data<scalar_t>(), 1, 1.0f,
+                         grad_bias.data<scalar_t>(), 1);
+    }
 
     return {
-        grad_input, grad_offset, grad_mask, grad_weight, grad_bias};
+        grad_input, grad_offset, grad_mask, grad_weight, grad_bias
+    };
 }
