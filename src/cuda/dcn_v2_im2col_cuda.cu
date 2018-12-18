@@ -138,8 +138,11 @@ __global__ void modulated_deformable_im2col_gpu_kernel(const int n,
     // index index of output matrix
     const int w_col = index % width_col;
     const int h_col = (index / width_col) % height_col;
-    const int b_col = (index / width_col / height_col) % batch_size;
-    const int c_im = (index / width_col / height_col) / batch_size;
+    // const int b_col = (index / width_col / height_col) % batch_size;
+    const int b_col = (index / width_col / height_col / num_channels) % batch_size;
+    // const int c_im = (index / width_col / height_col) / batch_size;
+    const int c_im = (index / width_col / height_col) % num_channels;
+    // const int c_col = c_im * kernel_h * kernel_w;
     const int c_col = c_im * kernel_h * kernel_w;
 
     // compute deformable group index
@@ -148,7 +151,8 @@ __global__ void modulated_deformable_im2col_gpu_kernel(const int n,
     const int h_in = h_col * stride_h - pad_h;
     const int w_in = w_col * stride_w - pad_w;
 
-    float *data_col_ptr = data_col + ((c_col * batch_size + b_col) * height_col + h_col) * width_col + w_col;
+    //  float *data_col_ptr = data_col + ((c_col * batch_size + b_col) * height_col + h_col) * width_col + w_col;
+    float *data_col_ptr = data_col + ((b_col * num_channels * kernel_w * kernel_h + c_col) * height_col + h_col) * width_col + w_col;
     //const float* data_im_ptr = data_im + ((b_col * num_channels + c_im) * height + h_in) * width + w_in;
     const float *data_im_ptr = data_im + (b_col * num_channels + c_im) * height * width;
     const float *data_offset_ptr = data_offset + (b_col * deformable_group + deformable_group_index) * 2 * kernel_h * kernel_w * height_col * width_col;
@@ -179,8 +183,8 @@ __global__ void modulated_deformable_im2col_gpu_kernel(const int n,
           val = dmcn_im2col_bilinear(data_im_ptr, width, height, width, h_im, w_im);
         }
         *data_col_ptr = val * mask;
-        data_col_ptr += batch_size * height_col * width_col;
-        //data_col_ptr += height_col * width_col;
+        // data_col_ptr += batch_size * height_col * width_col;
+        data_col_ptr += height_col * width_col;
       }
     }
   }
