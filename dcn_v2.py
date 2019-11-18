@@ -12,9 +12,15 @@ from torch.autograd.function import once_differentiable
 
 import _ext as _backend
 
+try:
+    from apex import amp
+except ImportError:
+    raise ImportError("Please install apex from https://www.github.com/nvidia/apex to run this example.")
+
 
 class _DCNv2(Function):
     @staticmethod
+    @amp.float_function
     def forward(ctx, input, offset, mask, weight, bias,
                 stride, padding, dilation, deformable_groups):
         ctx.stride = _pair(stride)
@@ -34,6 +40,7 @@ class _DCNv2(Function):
 
     @staticmethod
     @once_differentiable
+    @amp.float_function
     def backward(ctx, grad_output):
         input, offset, mask, weight, bias = ctx.saved_tensors
         grad_input, grad_offset, grad_mask, grad_weight, grad_bias = \
