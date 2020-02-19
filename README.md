@@ -3,7 +3,8 @@
 ### Build
 ```bash
     ./make.sh         # build
-    python test.py    # run examples and gradient check 
+    python testcpu.py    # run examples and gradient check on cpu
+    python testcuda.py   # run examples and gradient check on gpu 
 ```
 
 ### An Example
