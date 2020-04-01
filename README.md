@@ -1,6 +1,4 @@
-## Deformable Convolutional Networks V2 with Pytorch 1.0
-
-## CPU and GPU version
+## Deformable Convolutional Networks V2 with Pytorch 1.X
 
 ### Build
 ```bash
