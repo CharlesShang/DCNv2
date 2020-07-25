@@ -58,6 +58,8 @@ def get_extensions():
     ]
     return ext_modules
 
+print(find_packages(exclude=("configs", "tests",)))
+
 setup(
     name="DCNv2",
     version="0.1",
