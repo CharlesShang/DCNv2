@@ -357,11 +357,12 @@ std::vector<at::Tensor> dcn_v2_cuda_backward(const at::Tensor &input,
         cublasHandle_t handle = at::cuda::getCurrentCUDABlasHandle();
         cublasOperation_t op = _cublasOpFromChar('t');
         _cublasAdjustLdLevel2(k_, m_, &k_);
-        float* grad_output_n_float = grad_output_n.data_ptr<float>();
-        float* one_float = ones.data_ptr<float>();
-        float alpha = 1.0f;
-        float beta = 1.0f;
-        cublasSgemv(handle, op, k_, m_, &alpha, grad_output_n_float,k_, one_float,1, &beta, grad_bias.data_ptr<float>(), 1);
+        scalar_t* grad_output_n_float = grad_output_n.data_ptr<scalar_t>();
+        scalar_t* one_float = ones.data_ptr<scalar_t>();
+        scalar_t alpha = 1.0;
+        scalar_t beta = 1.0;
+        cublasSgemv(handle, op, k_, m_, &alpha, grad_output_n_float,k_, one_float,1, &beta, grad_bias.data_ptr<scalar_t>(), 1);
+
     }
     
 
