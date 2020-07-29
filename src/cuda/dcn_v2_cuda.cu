@@ -3,12 +3,48 @@
 
 #include <ATen/ATen.h>
 #include <ATen/cuda/CUDAContext.h>
-
+#include <ATen/cuda/CUDABlas.h>
+#include <ATen/Dispatch.h>
+#include <ATen/div_rtn.h>
 #include <THC/THC.h>
 #include <THC/THCAtomics.cuh>
 #include <THC/THCDeviceUtils.cuh>
+#include <ATen/cuda/CUDABlas.h>
+#include <ATen/cuda/Exceptions.h>
 
-extern THCState *state;
+THCState *state = at::globalContext().lazyInitCUDA();
+
+static cublasOperation_t _cublasOpFromChar(char op) {
+    switch (op) {
+      case 'n':
+      case 'N':
+        return CUBLAS_OP_N;
+      case 't':
+      case 'T':
+        return CUBLAS_OP_T;
+      case 'c':
+      case 'C':
+        return CUBLAS_OP_C;
+    }
+    AT_ERROR(
+        "_cublasOpFromChar input should be 't', 'n' or 'c' but got `", op, "`");
+  }
+
+  static void _cublasAdjustLdLevel2(int64_t m, int64_t n, int64_t* lda) {
+    // Note: leading dimensions generally are checked that they are > 0
+    // and at least as big the result requires (even if the value won't
+    // be used).
+  
+    // Q: Why does Level3 check trans but this doesn't?
+    // A: In level 2, the sizes (m, n) specify the size of A
+    // (independent of trans value). In level 3. the sizes (m, n, k)
+    // specify the sizes of op(A), op(B) where op depend on trans
+    // values.
+    if (n <= 1)
+      *lda = std::max<int64_t>(m, 1);
+  }
+
+
 
 // author: Charles Shang
 // https://github.com/torch/cunn/blob/master/lib/THCUNN/generic/SpatialConvolutionMM.cu
@@ -104,16 +140,16 @@ dcn_v2_cuda_forward(const at::Tensor &input,
     const int block = 128;
     const int grid = (batch + block - 1) / block;
 
-    createBatchGemmBuffer<<<grid, block, 0, THCState_getCurrentStream(state)>>>(
+    createBatchGemmBuffer<<<grid, block, 0, c10::cuda::getCurrentCUDAStream()>>>(
         input_b, output_b,
         columns_b, ones_b,
         weight_b, bias_b,
-        input.data<scalar_t>(),
-        output.data<scalar_t>(),
-        columns.data<scalar_t>(),
-        ones.data<scalar_t>(),
-        weight.data<scalar_t>(),
-        bias.data<scalar_t>(),
+        input.data_ptr<scalar_t>(),
+        output.data_ptr<scalar_t>(),
+        columns.data_ptr<scalar_t>(),
+        ones.data_ptr<scalar_t>(),
+        weight.data_ptr<scalar_t>(),
+        bias.data_ptr<scalar_t>(),
         channels * width * height,
         channels_out * width_out * height_out,
         channels * kernel_h * kernel_w * height_out * width_out,
@@ -136,15 +172,15 @@ dcn_v2_cuda_forward(const at::Tensor &input,
                             output_b, n_,
                             batch);
 
-    modulated_deformable_im2col_cuda(THCState_getCurrentStream(state),
-                                     input.data<scalar_t>(),
-                                     offset.data<scalar_t>(),
-                                     mask.data<scalar_t>(),
+    modulated_deformable_im2col_cuda(c10::cuda::getCurrentCUDAStream(),
+                                     input.data_ptr<scalar_t>(),
+                                     offset.data_ptr<scalar_t>(),
+                                     mask.data_ptr<scalar_t>(),
                                      batch, channels, height, width,
                                      height_out, width_out, kernel_h, kernel_w,
                                      pad_h, pad_w, stride_h, stride_w, dilation_h, dilation_w,
                                      deformable_group,
-                                     columns.data<scalar_t>());
+                                     columns.data_ptr<scalar_t>());
 
     long m = channels_out;
     long n = height_out * width_out;
@@ -271,63 +307,63 @@ std::vector<at::Tensor> dcn_v2_cuda_backward(const at::Tensor &input,
         long k = channels_out;
 
         THCudaBlas_Sgemm(state, 'n', 't', n, m, k, 1.0f,
-                         grad_output_n.data<scalar_t>(), n,
-                         weight.data<scalar_t>(), m, 0.0f,
-                         columns.data<scalar_t>(), n);
+                         grad_output_n.data_ptr<scalar_t>(), n,
+                         weight.data_ptr<scalar_t>(), m, 0.0f,
+                         columns.data_ptr<scalar_t>(), n);
 
         // gradient w.r.t. input coordinate data
-        modulated_deformable_col2im_coord_cuda(THCState_getCurrentStream(state),
-                                               columns.data<scalar_t>(),
-                                               input_n.data<scalar_t>(),
-                                               offset_n.data<scalar_t>(),
-                                               mask_n.data<scalar_t>(),
+        modulated_deformable_col2im_coord_cuda(c10::cuda::getCurrentCUDAStream(),
+                                               columns.data_ptr<scalar_t>(),
+                                               input_n.data_ptr<scalar_t>(),
+                                               offset_n.data_ptr<scalar_t>(),
+                                               mask_n.data_ptr<scalar_t>(),
                                                1, channels, height, width,
                                                height_out, width_out, kernel_h, kernel_w,
                                                pad_h, pad_w, stride_h, stride_w,
                                                dilation_h, dilation_w, deformable_group,
-                                               grad_offset_n.data<scalar_t>(),
-                                               grad_mask_n.data<scalar_t>());
+                                               grad_offset_n.data_ptr<scalar_t>(),
+                                               grad_mask_n.data_ptr<scalar_t>());
         // gradient w.r.t. input data
-        modulated_deformable_col2im_cuda(THCState_getCurrentStream(state),
-                                         columns.data<scalar_t>(),
-                                         offset_n.data<scalar_t>(),
-                                         mask_n.data<scalar_t>(),
+        modulated_deformable_col2im_cuda(c10::cuda::getCurrentCUDAStream(),
+                                         columns.data_ptr<scalar_t>(),
+                                         offset_n.data_ptr<scalar_t>(),
+                                         mask_n.data_ptr<scalar_t>(),
                                          1, channels, height, width,
                                          height_out, width_out, kernel_h, kernel_w,
                                          pad_h, pad_w, stride_h, stride_w,
                                          dilation_h, dilation_w, deformable_group,
-                                         grad_input_n.data<scalar_t>());
+                                         grad_input_n.data_ptr<scalar_t>());
 
         // gradient w.r.t. weight, dWeight should accumulate across the batch and group
-        modulated_deformable_im2col_cuda(THCState_getCurrentStream(state),
-                                         input_n.data<scalar_t>(),
-                                         offset_n.data<scalar_t>(),
-                                         mask_n.data<scalar_t>(),
+        modulated_deformable_im2col_cuda(c10::cuda::getCurrentCUDAStream(),
+                                         input_n.data_ptr<scalar_t>(),
+                                         offset_n.data_ptr<scalar_t>(),
+                                         mask_n.data_ptr<scalar_t>(),
                                          1, channels, height, width,
                                          height_out, width_out, kernel_h, kernel_w,
                                          pad_h, pad_w, stride_h, stride_w,
                                          dilation_h, dilation_w, deformable_group,
-                                         columns.data<scalar_t>());
+                                         columns.data_ptr<scalar_t>());
 
         long m_ = channels_out;
         long n_ = channels * kernel_h * kernel_w;
         long k_ = height_out * width_out;
 
         THCudaBlas_Sgemm(state, 't', 'n', n_, m_, k_, 1.0f,
-                         columns.data<scalar_t>(), k_,
-                         grad_output_n.data<scalar_t>(), k_, 1.0f,
-                         grad_weight.data<scalar_t>(), n_);
+                         columns.data_ptr<scalar_t>(), k_,
+                         grad_output_n.data_ptr<scalar_t>(), k_, 1.0f,
+                         grad_weight.data_ptr<scalar_t>(), n_);
 
-        // gradient w.r.t. bias
-        // long m_ = channels_out;
-        // long k__ = height_out * width_out;
-        THCudaBlas_Sgemv(state,
-                         't',
-                         k_, m_, 1.0f,
-                         grad_output_n.data<scalar_t>(), k_,
-                         ones.data<scalar_t>(), 1, 1.0f,
-                         grad_bias.data<scalar_t>(), 1);
+        cublasHandle_t handle = at::cuda::getCurrentCUDABlasHandle();
+        cublasOperation_t op = _cublasOpFromChar('t');
+        _cublasAdjustLdLevel2(k_, m_, &k_);
+        float* grad_output_n_float = grad_output_n.data_ptr<float>();
+        float* one_float = ones.data_ptr<float>();
+        float alpha = 1.0f;
+        float beta = 1.0f;
+        cublasSgemv(handle, op, k_, m_, &alpha, grad_output_n_float,k_, one_float,1, &beta, grad_bias.data_ptr<float>(), 1);
     }
+    
 
     return {
         grad_input, grad_offset, grad_mask, grad_weight, grad_bias
