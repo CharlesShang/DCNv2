@@ -58,7 +58,12 @@ setup(
     author="charlesshang",
     url="https://github.com/charlesshang/DCNv2",
     description="deformable convolutional networks",
-    packages=find_packages(exclude=("configs", "tests")),
+    packages=find_packages(
+        exclude=(
+            "configs",
+            "tests",
+        )
+    ),
     # install_requires=requirements,
     ext_modules=get_extensions(),
     cmdclass={"build_ext": torch.utils.cpp_extension.BuildExtension},
