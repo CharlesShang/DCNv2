@@ -35,7 +35,14 @@ dcn_v2_forward(const at::Tensor &input,
         AT_ERROR("Not compiled with GPU support");
 #endif
     }
-    AT_ERROR("Not implemented on the CPU");
+    else{
+        return dcn_v2_cpu_forward(input, weight, bias, offset, mask,
+                                   kernel_h, kernel_w,
+                                   stride_h, stride_w,
+                                   pad_h, pad_w,
+                                   dilation_h, dilation_w,
+                                   deformable_group);
+    }
 }
 
 std::vector<at::Tensor>
@@ -69,7 +76,19 @@ dcn_v2_backward(const at::Tensor &input,
         AT_ERROR("Not compiled with GPU support");
 #endif
     }
-    AT_ERROR("Not implemented on the CPU");
+    else{
+        return dcn_v2_cpu_backward(input,
+                                    weight,
+                                    bias,
+                                    offset,
+                                    mask,
+                                    grad_output,
+                                    kernel_h, kernel_w,
+                                    stride_h, stride_w,
+                                    pad_h, pad_w,
+                                    dilation_h, dilation_w,
+                                    deformable_group);
+    }
 }
 
 std::tuple<at::Tensor, at::Tensor>
@@ -103,7 +122,19 @@ dcn_v2_psroi_pooling_forward(const at::Tensor &input,
         AT_ERROR("Not compiled with GPU support");
 #endif
     }
-    AT_ERROR("Not implemented on the CPU");
+    else{
+        return dcn_v2_psroi_pooling_cpu_forward(input,
+                                                 bbox,
+                                                 trans,
+                                                 no_trans,
+                                                 spatial_scale,
+                                                 output_dim,
+                                                 group_size,
+                                                 pooled_size,
+                                                 part_size,
+                                                 sample_per_part,
+                                                 trans_std);
+    }
 }
 
 std::tuple<at::Tensor, at::Tensor>
@@ -141,5 +172,19 @@ dcn_v2_psroi_pooling_backward(const at::Tensor &out_grad,
         AT_ERROR("Not compiled with GPU support");
 #endif
     }
-    AT_ERROR("Not implemented on the CPU");
+    else{
+        return dcn_v2_psroi_pooling_cpu_backward(out_grad,
+                                                  input,
+                                                  bbox,
+                                                  trans,
+                                                  top_count,
+                                                  no_trans,
+                                                  spatial_scale,
+                                                  output_dim,
+                                                  group_size,
+                                                  pooled_size,
+                                                  part_size,
+                                                  sample_per_part,
+                                                  trans_std);
+    }
 }

@@ -6,20 +6,20 @@
  * \author Yi Li, Guodong Zhang, Jifeng Dai
 */
 /***************** Adapted by Charles Shang *********************/
+// modified from the CUDA version for CPU use by Daniel K. Suhendro
 
 #include <cstdio>
 #include <algorithm>
 #include <cstring>
-#include <iostream>
 
 #include <ATen/ATen.h>
-#include <ATen/cuda/CUDAContext.h>
+//#include <ATen/cuda/CUDAContext.h>
 
-#include <THC/THC.h>
-#include <THC/THCAtomics.cuh>
-#include <THC/THCDeviceUtils.cuh>
+#include <TH/TH.h>
+//#include <THC/THCAtomics.cuh>
+//#include <THC/THCDeviceUtils.cuh>
 
-#define CUDA_KERNEL_LOOP(i, n)                        \
+/*#define CUDA_KERNEL_LOOP(i, n)                        \
   for (int i = blockIdx.x * blockDim.x + threadIdx.x; \
        i < (n);                                       \
        i += blockDim.x * gridDim.x)
@@ -28,10 +28,10 @@ const int CUDA_NUM_THREADS = 1024;
 inline int GET_BLOCKS(const int N)
 {
   return (N + CUDA_NUM_THREADS - 1) / CUDA_NUM_THREADS;
-}
+}*/
 
 template <typename T>
-__device__ T bilinear_interp_cuda(
+T bilinear_interp_cpu(
     const T *data,
     const T x,
     const T y,
@@ -56,7 +56,7 @@ __device__ T bilinear_interp_cuda(
 }
 
 template <typename T>
-__global__ void DeformablePSROIPoolForwardKernelCuda(
+ void DeformablePSROIPoolForwardKernelCpu(
     const int count,
     const T *bottom_data,
     const T spatial_scale,
@@ -75,7 +75,7 @@ __global__ void DeformablePSROIPoolForwardKernelCuda(
     T *top_data,
     T *top_count)
 {
-  CUDA_KERNEL_LOOP(index, count)
+  for(int index = 0; index < count; index++)
   {
     // The output is in order (n, ctop, ph, pw)
     int pw = index % pooled_width;
@@ -92,8 +92,8 @@ __global__ void DeformablePSROIPoolForwardKernelCuda(
     T roi_end_h = static_cast<T>(round(offset_bottom_rois[4]) + 1.) * spatial_scale - 0.5;
 
     // Force too small ROIs to be 1x1
-    T roi_width = max(roi_end_w - roi_start_w, 0.1); //avoid 0
-    T roi_height = max(roi_end_h - roi_start_h, 0.1);
+    T roi_width = std::max(roi_end_w - roi_start_w, T(0.1)); //avoid 0
+    T roi_height = std::max(roi_end_h - roi_start_h, T(0.1));
 
     // Compute w and h at bottom
     T bin_size_h = roi_height / static_cast<T>(pooled_height);
@@ -117,8 +117,8 @@ __global__ void DeformablePSROIPoolForwardKernelCuda(
     int count = 0;
     int gw = floor(static_cast<T>(pw) * group_size / pooled_width);
     int gh = floor(static_cast<T>(ph) * group_size / pooled_height);
-    gw = min(max(gw, 0), group_size - 1);
-    gh = min(max(gh, 0), group_size - 1);
+    gw = std::min(std::max(gw, 0), group_size - 1);
+    gh = std::min(std::max(gh, 0), group_size - 1);
 
     const T *offset_bottom_data = bottom_data + (roi_batch_ind * channels) * height * width;
     for (int ih = 0; ih < sample_per_part; ih++)
@@ -132,10 +132,10 @@ __global__ void DeformablePSROIPoolForwardKernelCuda(
         {
           continue;
         }
-        w = min(max(w, 0.), width - 1.);
-        h = min(max(h, 0.), height - 1.);
+        w = std::min(std::max(w, T(0.)), width - T(1.));
+        h = std::min(std::max(h, T(0.)), height - T(1.));
         int c = (ctop * group_size + gh) * group_size + gw;
-        T val = bilinear_interp_cuda(offset_bottom_data + c * height * width, w, h, width, height);
+        T val = bilinear_interp_cpu(offset_bottom_data + c * height * width, w, h, width, height);
         sum += val;
         count++;
       }
@@ -146,7 +146,7 @@ __global__ void DeformablePSROIPoolForwardKernelCuda(
 }
 
 template <typename T>
-__global__ void DeformablePSROIPoolBackwardAccKernelCuda(
+void DeformablePSROIPoolBackwardAccKernelCpu(
     const int count,
     const T *top_diff,
     const T *top_count,
@@ -168,7 +168,7 @@ __global__ void DeformablePSROIPoolBackwardAccKernelCuda(
     const int num_classes,
     const int channels_each_class)
 {
-  CUDA_KERNEL_LOOP(index, count)
+  for(int index = 0; index < count; index++)
   {
     // The output is in order (n, ctop, ph, pw)
     int pw = index % pooled_width;
@@ -183,10 +183,10 @@ __global__ void DeformablePSROIPoolBackwardAccKernelCuda(
     T roi_start_h = static_cast<T>(round(offset_bottom_rois[2])) * spatial_scale - 0.5;
     T roi_end_w = static_cast<T>(round(offset_bottom_rois[3]) + 1.) * spatial_scale - 0.5;
     T roi_end_h = static_cast<T>(round(offset_bottom_rois[4]) + 1.) * spatial_scale - 0.5;
-
+    
     // Force too small ROIs to be 1x1
-    T roi_width = max(roi_end_w - roi_start_w, 0.1); //avoid 0
-    T roi_height = max(roi_end_h - roi_start_h, 0.1);
+    T roi_width = std::max(roi_end_w - roi_start_w, T(0.1)); //avoid 0
+    T roi_height = std::max(roi_end_h - roi_start_h, T(0.1));
 
     // Compute w and h at bottom
     T bin_size_h = roi_height / static_cast<T>(pooled_height);
@@ -215,8 +215,8 @@ __global__ void DeformablePSROIPoolBackwardAccKernelCuda(
     T *offset_bottom_data_diff = bottom_data_diff + roi_batch_ind * channels * height * width;
     int gw = floor(static_cast<T>(pw) * group_size / pooled_width);
     int gh = floor(static_cast<T>(ph) * group_size / pooled_height);
-    gw = min(max(gw, 0), group_size - 1);
-    gh = min(max(gh, 0), group_size - 1);
+    gw = std::min(std::max(gw, 0), group_size - 1);
+    gh = std::min(std::max(gh, 0), group_size - 1);
 
     for (int ih = 0; ih < sample_per_part; ih++)
     {
@@ -229,8 +229,8 @@ __global__ void DeformablePSROIPoolBackwardAccKernelCuda(
         {
           continue;
         }
-        w = min(max(w, 0.), width - 1.);
-        h = min(max(h, 0.), height - 1.);
+        w = std::min(std::max(w, T(0.)), width - T(1.));
+        h = std::min(std::max(h, T(0.)), height - T(1.));
         int c = (ctop * group_size + gh) * group_size + gw;
         // backward on feature
         int x0 = floor(w);
@@ -243,10 +243,15 @@ __global__ void DeformablePSROIPoolBackwardAccKernelCuda(
         T q10 = dist_x * (1 - dist_y);
         T q11 = dist_x * dist_y;
         int bottom_index_base = c * height * width;
-        atomicAdd(offset_bottom_data_diff + bottom_index_base + y0 * width + x0, q00 * diff_val);
+        /*atomicAdd(offset_bottom_data_diff + bottom_index_base + y0 * width + x0, q00 * diff_val);
         atomicAdd(offset_bottom_data_diff + bottom_index_base + y1 * width + x0, q01 * diff_val);
         atomicAdd(offset_bottom_data_diff + bottom_index_base + y0 * width + x1, q10 * diff_val);
-        atomicAdd(offset_bottom_data_diff + bottom_index_base + y1 * width + x1, q11 * diff_val);
+        atomicAdd(offset_bottom_data_diff + bottom_index_base + y1 * width + x1, q11 * diff_val);*/
+       *(offset_bottom_data_diff + bottom_index_base + y0 * width + x0) += q00 * diff_val;
+       *(offset_bottom_data_diff + bottom_index_base + y1 * width + x0) += q01 * diff_val;
+       *(offset_bottom_data_diff + bottom_index_base + y0 * width + x1) += q10 * diff_val;
+       *(offset_bottom_data_diff + bottom_index_base + y1 * width + x1) += q11 * diff_val;
+
 
         if (no_trans)
         {
@@ -261,15 +266,17 @@ __global__ void DeformablePSROIPoolBackwardAccKernelCuda(
         T diff_y = (U11 * dist_x + U01 * (1 - dist_x) - U10 * dist_x - U00 * (1 - dist_x)) * trans_std * diff_val;
         diff_y *= roi_height;
 
-        atomicAdd(bottom_trans_diff + (((n * num_classes + class_id) * 2) * part_size + part_h) * part_size + part_w, diff_x);
-        atomicAdd(bottom_trans_diff + (((n * num_classes + class_id) * 2 + 1) * part_size + part_h) * part_size + part_w, diff_y);
+        /*atomicAdd(bottom_trans_diff + (((n * num_classes + class_id) * 2) * part_size + part_h) * part_size + part_w, diff_x);
+        atomicAdd(bottom_trans_diff + (((n * num_classes + class_id) * 2 + 1) * part_size + part_h) * part_size + part_w, diff_y);*/
+        *(bottom_trans_diff + (((n * num_classes + class_id) * 2) * part_size + part_h) * part_size + part_w) += diff_x;
+        *(bottom_trans_diff + (((n * num_classes + class_id) * 2 + 1) * part_size + part_h) * part_size + part_w) += diff_y;
       }
     }
   }
 }
 
 std::tuple<at::Tensor, at::Tensor>
-dcn_v2_psroi_pooling_cuda_forward(const at::Tensor &input,
+dcn_v2_psroi_pooling_cpu_forward(const at::Tensor &input,
                                   const at::Tensor &bbox,
                                   const at::Tensor &trans,
                                   const int no_trans,
@@ -281,9 +288,9 @@ dcn_v2_psroi_pooling_cuda_forward(const at::Tensor &input,
                                   const int sample_per_part,
                                   const float trans_std)
 {
-  AT_ASSERTM(input.type().is_cuda(), "input must be a CUDA tensor");
+  /*AT_ASSERTM(input.type().is_cuda(), "input must be a CUDA tensor");
   AT_ASSERTM(bbox.type().is_cuda(), "rois must be a CUDA tensor");
-  AT_ASSERTM(trans.type().is_cuda(), "trans must be a CUDA tensor");
+  AT_ASSERTM(trans.type().is_cuda(), "trans must be a CUDA tensor");*/
 
   const int batch = input.size(0);
   const int channels = input.size(1);
@@ -303,19 +310,19 @@ dcn_v2_psroi_pooling_cuda_forward(const at::Tensor &input,
   const int num_classes = no_trans ? 1 : channels_trans / 2;
   const int channels_each_class = no_trans ? output_dim : output_dim / num_classes;
 
-  cudaStream_t stream = at::cuda::getCurrentCUDAStream();
+  //cudaStream_t stream = at::cuda::getCurrentCUDAStream();
 
   if (out.numel() == 0)
   {
-    THCudaCheck(cudaGetLastError());
+    //THCudaCheck(cudaGetLastError());
     return std::make_tuple(out, top_count);
   }
 
-  dim3 grid(std::min(THCCeilDiv(out_size, 512L), 4096L));
-  dim3 block(512);
+  /*dim3 grid(std::min(THCCeilDiv(out_size, 512L), 4096L));
+  dim3 block(512);*/
 
-  AT_DISPATCH_FLOATING_TYPES(input.type(), "dcn_v2_psroi_pooling_cuda_forward", [&] {
-    DeformablePSROIPoolForwardKernelCuda<scalar_t><<<grid, block, 0, stream>>>(
+  AT_DISPATCH_FLOATING_TYPES(input.type(), "dcn_v2_psroi_pooling_cpu_forward", [&] {
+    DeformablePSROIPoolForwardKernelCpu<scalar_t>(
         out_size,
         input.contiguous().data<scalar_t>(),
         spatial_scale,
@@ -336,12 +343,12 @@ dcn_v2_psroi_pooling_cuda_forward(const at::Tensor &input,
         out.data<scalar_t>(),
         top_count.data<scalar_t>());
   });
-  THCudaCheck(cudaGetLastError());
+  //THCudaCheck(cudaGetLastError());
   return std::make_tuple(out, top_count);
 }
 
 std::tuple<at::Tensor, at::Tensor>
-dcn_v2_psroi_pooling_cuda_backward(const at::Tensor &out_grad,
+dcn_v2_psroi_pooling_cpu_backward(const at::Tensor &out_grad,
                                    const at::Tensor &input,
                                    const at::Tensor &bbox,
                                    const at::Tensor &trans,
@@ -355,11 +362,11 @@ dcn_v2_psroi_pooling_cuda_backward(const at::Tensor &out_grad,
                                    const int sample_per_part,
                                    const float trans_std)
 {
-  AT_ASSERTM(out_grad.type().is_cuda(), "out_grad must be a CUDA tensor");
+  /*AT_ASSERTM(out_grad.type().is_cuda(), "out_grad must be a CUDA tensor");
   AT_ASSERTM(input.type().is_cuda(), "input must be a CUDA tensor");
   AT_ASSERTM(bbox.type().is_cuda(), "bbox must be a CUDA tensor");
   AT_ASSERTM(trans.type().is_cuda(), "trans must be a CUDA tensor");
-  AT_ASSERTM(top_count.type().is_cuda(), "top_count must be a CUDA tensor");
+  AT_ASSERTM(top_count.type().is_cuda(), "top_count must be a CUDA tensor");*/
 
   const int batch = input.size(0);
   const int channels = input.size(1);
@@ -380,16 +387,16 @@ dcn_v2_psroi_pooling_cuda_backward(const at::Tensor &out_grad,
 
   if (input_grad.numel() == 0)
   {
-    THCudaCheck(cudaGetLastError());
+    //THCudaCheck(cudaGetLastError());
     return std::make_tuple(input_grad, trans_grad);
   }
 
-  dim3 grid(std::min(THCCeilDiv(out_size, 512L), 4096L));
+  /*dim3 grid(std::min(THCCeilDiv(out_size, 512L), 4096L));
   dim3 block(512);
-  cudaStream_t stream = at::cuda::getCurrentCUDAStream();
+  cudaStream_t stream = at::cuda::getCurrentCUDAStream();*/
 
-  AT_DISPATCH_FLOATING_TYPES(out_grad.type(), "dcn_v2_psroi_pooling_cuda_backward", [&] {
-    DeformablePSROIPoolBackwardAccKernelCuda<scalar_t><<<grid, block, 0, stream>>>(
+  AT_DISPATCH_FLOATING_TYPES(out_grad.type(), "dcn_v2_psroi_pooling_cpu_backward", [&] {
+    DeformablePSROIPoolBackwardAccKernelCpu<scalar_t>(
         out_size,
         out_grad.contiguous().data<scalar_t>(),
         top_count.contiguous().data<scalar_t>(),
@@ -414,6 +421,6 @@ dcn_v2_psroi_pooling_cuda_backward(const at::Tensor &out_grad,
         num_classes,
         channels_each_class);
   });
-  THCudaCheck(cudaGetLastError());
+  //THCudaCheck(cudaGetLastError());
   return std::make_tuple(input_grad, trans_grad);
 }
