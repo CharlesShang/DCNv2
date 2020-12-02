@@ -2,6 +2,7 @@
 
 import glob
 import os
+import sys
 
 import torch
 from setuptools import find_packages, setup
@@ -37,6 +38,8 @@ def get_extensions():
     else:
         # raise NotImplementedError('Cuda is not available')
         pass
+    
+    extra_compile_args['cxx'].append('-fopenmp')
 
     sources = [os.path.join(extensions_dir, s) for s in sources]
     include_dirs = [extensions_dir]

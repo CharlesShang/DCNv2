@@ -281,9 +281,9 @@ dcn_v2_psroi_pooling_cuda_forward(const at::Tensor &input,
                                   const int sample_per_part,
                                   const float trans_std)
 {
-  AT_ASSERTM(input.type().is_cuda(), "input must be a CUDA tensor");
-  AT_ASSERTM(bbox.type().is_cuda(), "rois must be a CUDA tensor");
-  AT_ASSERTM(trans.type().is_cuda(), "trans must be a CUDA tensor");
+  AT_ASSERTM(input.is_cuda(), "input must be a CUDA tensor");
+  AT_ASSERTM(bbox.is_cuda(), "rois must be a CUDA tensor");
+  AT_ASSERTM(trans.is_cuda(), "trans must be a CUDA tensor");
 
   const int batch = input.size(0);
   const int channels = input.size(1);
@@ -314,17 +314,17 @@ dcn_v2_psroi_pooling_cuda_forward(const at::Tensor &input,
   dim3 grid(std::min(THCCeilDiv(out_size, 512L), 4096L));
   dim3 block(512);
 
-  AT_DISPATCH_FLOATING_TYPES(input.type(), "dcn_v2_psroi_pooling_cuda_forward", [&] {
+  AT_DISPATCH_FLOATING_TYPES(input.scalar_type(), "dcn_v2_psroi_pooling_cuda_forward", [&] {
     DeformablePSROIPoolForwardKernelCuda<scalar_t><<<grid, block, 0, stream>>>(
         out_size,
-        input.contiguous().data<scalar_t>(),
+        input.contiguous().data_ptr<scalar_t>(),
         spatial_scale,
         channels,
         height, width,
         pooled_height,
         pooled_width,
-        bbox.contiguous().data<scalar_t>(),
-        trans.contiguous().data<scalar_t>(),
+        bbox.contiguous().data_ptr<scalar_t>(),
+        trans.contiguous().data_ptr<scalar_t>(),
         no_trans,
         trans_std,
         sample_per_part,
@@ -333,8 +333,8 @@ dcn_v2_psroi_pooling_cuda_forward(const at::Tensor &input,
         part_size,
         num_classes,
         channels_each_class,
-        out.data<scalar_t>(),
-        top_count.data<scalar_t>());
+        out.data_ptr<scalar_t>(),
+        top_count.data_ptr<scalar_t>());
   });
   THCudaCheck(cudaGetLastError());
   return std::make_tuple(out, top_count);
@@ -355,11 +355,11 @@ dcn_v2_psroi_pooling_cuda_backward(const at::Tensor &out_grad,
                                    const int sample_per_part,
                                    const float trans_std)
 {
-  AT_ASSERTM(out_grad.type().is_cuda(), "out_grad must be a CUDA tensor");
-  AT_ASSERTM(input.type().is_cuda(), "input must be a CUDA tensor");
-  AT_ASSERTM(bbox.type().is_cuda(), "bbox must be a CUDA tensor");
-  AT_ASSERTM(trans.type().is_cuda(), "trans must be a CUDA tensor");
-  AT_ASSERTM(top_count.type().is_cuda(), "top_count must be a CUDA tensor");
+  AT_ASSERTM(out_grad.is_cuda(), "out_grad must be a CUDA tensor");
+  AT_ASSERTM(input.is_cuda(), "input must be a CUDA tensor");
+  AT_ASSERTM(bbox.is_cuda(), "bbox must be a CUDA tensor");
+  AT_ASSERTM(trans.is_cuda(), "trans must be a CUDA tensor");
+  AT_ASSERTM(top_count.is_cuda(), "top_count must be a CUDA tensor");
 
   const int batch = input.size(0);
   const int channels = input.size(1);
@@ -388,11 +388,11 @@ dcn_v2_psroi_pooling_cuda_backward(const at::Tensor &out_grad,
   dim3 block(512);
   cudaStream_t stream = at::cuda::getCurrentCUDAStream();
 
-  AT_DISPATCH_FLOATING_TYPES(out_grad.type(), "dcn_v2_psroi_pooling_cuda_backward", [&] {
+  AT_DISPATCH_FLOATING_TYPES(out_grad.scalar_type(), "dcn_v2_psroi_pooling_cuda_backward", [&] {
     DeformablePSROIPoolBackwardAccKernelCuda<scalar_t><<<grid, block, 0, stream>>>(
         out_size,
-        out_grad.contiguous().data<scalar_t>(),
-        top_count.contiguous().data<scalar_t>(),
+        out_grad.contiguous().data_ptr<scalar_t>(),
+        top_count.contiguous().data_ptr<scalar_t>(),
         num_bbox,
         spatial_scale,
         channels,
@@ -401,11 +401,11 @@ dcn_v2_psroi_pooling_cuda_backward(const at::Tensor &out_grad,
         pooled_height,
         pooled_width,
         output_dim,
-        input_grad.contiguous().data<scalar_t>(),
-        trans_grad.contiguous().data<scalar_t>(),
-        input.contiguous().data<scalar_t>(),
-        bbox.contiguous().data<scalar_t>(),
-        trans.contiguous().data<scalar_t>(),
+        input_grad.contiguous().data_ptr<scalar_t>(),
+        trans_grad.contiguous().data_ptr<scalar_t>(),
+        input.contiguous().data_ptr<scalar_t>(),
+        bbox.contiguous().data_ptr<scalar_t>(),
+        trans.contiguous().data_ptr<scalar_t>(),
         no_trans,
         trans_std,
         sample_per_part,
