@@ -112,18 +112,31 @@ class DCNv2(nn.Module):
     def forward(self, input, offset, mask):
         assert 2 * self.deformable_groups * self.kernel_size[0] * self.kernel_size[1] == offset.shape[1]
         assert self.deformable_groups * self.kernel_size[0] * self.kernel_size[1] == mask.shape[1]
-        return dcn_v2_conv(
-            input,
-            offset,
-            mask,
-            self.weight,
-            self.bias,
-            self.stride,
-            self.padding,
-            self.dilation,
-            self.deformable_groups,
-        )
 
+        if not torch.jit.is_scripting():
+            if not torch.jit.is_tracing():
+                return dcn_v2_conv(
+                    input,
+                    offset,
+                    mask,
+                    self.weight,
+                    self.bias,
+                    self.stride,
+                    self.padding,
+                    self.dilation,
+                    self.deformable_groups,
+                )
+
+        kernel_size = self.weight.shape[2:4]
+        output = torch.ops.custom.dcn_v2(input, self.weight, self.bias,
+                                       offset, mask,
+                                     kernel_size[0], kernel_size[1],
+                                     self.stride[0], self.stride[1],
+                                     self.padding[0], self.padding[1],
+                                     self.dilation[0], self.dilation[1],
+                                     self.deformable_groups)
+        return output
+ 
 
 class DCN(DCNv2):
     def __init__(
@@ -158,19 +171,30 @@ class DCN(DCNv2):
         o1, o2, mask = torch.chunk(out, 3, dim=1)
         offset = torch.cat((o1, o2), dim=1)
         mask = torch.sigmoid(mask)
-        return dcn_v2_conv(
-            input,
-            offset,
-            mask,
-            self.weight,
-            self.bias,
-            self.stride,
-            self.padding,
-            self.dilation,
-            self.deformable_groups,
-        )
+        if not torch.jit.is_scripting():
+            if not torch.jit.is_tracing():
+                return dcn_v2_conv(
+                    input,
+                    offset,
+                    mask,
+                    self.weight,
+                    self.bias,
+                    self.stride,
+                    self.padding,
+                    self.dilation,
+                    self.deformable_groups,
+                )
 
-
+        kernel_size = self.weight.shape[2:4]
+        output = torch.ops.custom.dcn_v2(input, self.weight, self.bias,
+                                       offset, mask,
+                                     kernel_size[0], kernel_size[1],
+                                     self.stride[0], self.stride[1],
+                                     self.padding[0], self.padding[1],
+                                     self.dilation[0], self.dilation[1],
+                                     self.deformable_groups)
+        return output
+ 
 class _DCNv2Pooling(Function):
     @staticmethod
     def forward(

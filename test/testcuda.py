@@ -45,6 +45,7 @@ def check_zero_offset():
     ).cuda()
 
     dcn_v2 = DCNv2(inC, outC, (kH, kW), stride=1, padding=1, dilation=1, deformable_groups=deformable_groups).cuda()
+    scripted_dcnv2 = torch.jit.script(dcn_v2)
 
     conv_offset.weight.data.zero_()
     conv_offset.bias.data.zero_()
@@ -57,6 +58,10 @@ def check_zero_offset():
     mask = conv_mask(input)
     mask = torch.sigmoid(mask)
     output = dcn_v2(input, offset, mask)
+    result = scripted_dcnv2(input, offset, mask)
+    print(scripted_dcnv2.code)
+    torch.testing.assert_allclose(output, result)
+
     output *= 2
     d = (input - output).abs().max()
     if d < 1e-10:
@@ -194,13 +199,18 @@ def example_dconv():
     input = torch.randn(2, 64, 128, 128).cuda()
     # wrap all things (offset and mask) in DCN
     dcn = DCN(64, 64, kernel_size=(3, 3), stride=1, padding=1, deformable_groups=2).cuda()
+    traced_dcn = torch.jit.script(dcn, input)
     # print(dcn.weight.shape, input.shape)
     output = dcn(input)
+    result = traced_dcn(input)
+
     targert = output.new(*output.size())
     targert.data.uniform_(-0.01, 0.01)
     error = (targert - output).mean()
     error.backward()
     print(output.shape)
+    print(traced_dcn.code)
+    torch.testing.assert_allclose(output, result)
 
 
 def example_dpooling():
