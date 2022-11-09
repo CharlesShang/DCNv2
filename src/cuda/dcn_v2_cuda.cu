@@ -104,7 +104,7 @@ dcn_v2_cuda_forward(const at::Tensor &input,
     const int block = 128;
     const int grid = (batch + block - 1) / block;
 
-    createBatchGemmBuffer<<<grid, block, 0, THCState_getCurrentStream(state)>>>(
+    createBatchGemmBuffer<<<grid, block, 0, c10::cuda::getCurrentCUDAStream()>>>(
         input_b, output_b,
         columns_b, ones_b,
         weight_b, bias_b,
@@ -136,7 +136,7 @@ dcn_v2_cuda_forward(const at::Tensor &input,
                             output_b, n_,
                             batch);
 
-    modulated_deformable_im2col_cuda(THCState_getCurrentStream(state),
+    modulated_deformable_im2col_cuda(c10::cuda::getCurrentCUDAStream(),
                                      input.data<scalar_t>(),
                                      offset.data<scalar_t>(),
                                      mask.data<scalar_t>(),
@@ -276,7 +276,7 @@ std::vector<at::Tensor> dcn_v2_cuda_backward(const at::Tensor &input,
                          columns.data<scalar_t>(), n);
 
         // gradient w.r.t. input coordinate data
-        modulated_deformable_col2im_coord_cuda(THCState_getCurrentStream(state),
+        modulated_deformable_col2im_coord_cuda(c10::cuda::getCurrentCUDAStream(),
                                                columns.data<scalar_t>(),
                                                input_n.data<scalar_t>(),
                                                offset_n.data<scalar_t>(),
@@ -288,7 +288,7 @@ std::vector<at::Tensor> dcn_v2_cuda_backward(const at::Tensor &input,
                                                grad_offset_n.data<scalar_t>(),
                                                grad_mask_n.data<scalar_t>());
         // gradient w.r.t. input data
-        modulated_deformable_col2im_cuda(THCState_getCurrentStream(state),
+        modulated_deformable_col2im_cuda(c10::cuda::getCurrentCUDAStream(),
                                          columns.data<scalar_t>(),
                                          offset_n.data<scalar_t>(),
                                          mask_n.data<scalar_t>(),
@@ -299,7 +299,7 @@ std::vector<at::Tensor> dcn_v2_cuda_backward(const at::Tensor &input,
                                          grad_input_n.data<scalar_t>());
 
         // gradient w.r.t. weight, dWeight should accumulate across the batch and group
-        modulated_deformable_im2col_cuda(THCState_getCurrentStream(state),
+        modulated_deformable_im2col_cuda(c10::cuda::getCurrentCUDAStream(),
                                          input_n.data<scalar_t>(),
                                          offset_n.data<scalar_t>(),
                                          mask_n.data<scalar_t>(),
@@ -321,12 +321,18 @@ std::vector<at::Tensor> dcn_v2_cuda_backward(const at::Tensor &input,
         // gradient w.r.t. bias
         // long m_ = channels_out;
         // long k__ = height_out * width_out;
-        THCudaBlas_Sgemv(state,
-                         't',
-                         k_, m_, 1.0f,
-                         grad_output_n.data<scalar_t>(), k_,
-                         ones.data<scalar_t>(), 1, 1.0f,
-                         grad_bias.data<scalar_t>(), 1);
+        // THCudaBlas_Sgemm(state,
+        //                  't', 'n',
+        //                  k_, m_, 1, 1.0f,
+        //                  grad_output_n.data<scalar_t>(), k_,
+        //                  ones.data<scalar_t>(), 1, 1.0f,
+        //                  grad_bias.data<scalar_t>(), 1);
+        THCudaBlas_Sgemm(state,
+            'N', 'N', 1, m_, k_, 1.0f,
+            ones.data<scalar_t>(), 1,
+            grad_output_n.data<scalar_t>(), k_,
+            1.0f,
+            grad_bias.data<scalar_t>(), 1);
     }
 
     return {
