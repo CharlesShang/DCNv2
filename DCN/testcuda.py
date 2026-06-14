@@ -132,7 +132,7 @@ def check_pooling_zero_offset():
 
 
 def check_gradient_dpooling():
-    input = torch.randn(2, 3, 5, 5).cuda() * 0.01
+    input = torch.randn(2, 3, 5, 5).cuda().float() * 0.01
     N = 4
     batch_inds = torch.randint(2, (N, 1)).cuda().float()
     x = torch.rand((N, 1)).cuda().float() * 15
